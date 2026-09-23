@@ -89,22 +89,82 @@ void tutupSemuaTab(CNode*& head) {
 
 // SOAL 1
 bool bukaHalaman(DNode*& head, DNode*& tail, int nomor) {
-    return false;
+    DNode* baru = new DNode();
+    baru->data = nomor;
+    baru->next = nullptr;
+    baru->prev = tail;
+
+    if(tail != nullptr){
+        tail->next = baru;
+    }else{
+        head = baru;
+    }
+    tail = baru;
+    return true;
 }
 
 // SOAL 2
 int riwayatMundur(DNode* tail, int* keluaran) {
-    return 0;
+    int n = 0;
+    for(DNode* p = tail; p != nullptr; p = p->prev){
+        keluaran[n] = p->data;
+        ++n;
+    }
+    return n;
 }
 
 // SOAL 3
 bool hapusHalaman(DNode*& head, DNode*& tail, int nomor) {
-    return false;
+    // cocokin nomor
+    DNode* p = head;
+    while(p != nullptr && p->data != nomor){
+        p = p->next;
+    }
+
+    if(p == nullptr){
+        return false; // tidak ketemu
+    }
+
+    // bagian kiri
+    if(p->prev != nullptr){
+        p->prev->next = p->next;
+    }else{
+        head = p->next;
+    }
+
+    // bagian kanan
+    if(p->next != nullptr){
+        p->next->prev = p->prev;
+    }else{
+        tail = p->prev;
+    }
+
+    //delete
+    delete p;
+    return true;
 }
 
 // SOAL 4
 bool bukaTab(CNode*& head, int nomor) {
-    return false;
+    CNode* baru = new CNode();
+    baru->data = nomor;
+
+    if(head == nullptr){
+        baru->next = baru;
+        head = baru;
+        return true;
+    }
+
+    // cari terakhir
+    CNode* p = head;
+    while(p->next != head){
+        p = p->next;
+    }
+
+    p->next = baru;
+    baru->next = head;
+
+    return true;
 }
 
 // =============================================================================
