@@ -1,0 +1,29 @@
+{
+    // Tekan F5 (Run and Debug) atau Ctrl+F5 (Run tanpa debug).
+    // Program dibangun dulu lewat tugas "build student.cpp", lalu dijalankan
+    // di terminal terintegrasi supaya cin bisa Anda ketik langsung.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Jalankan student.cpp",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/latihan",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "console": "integratedTerminal",
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Tampilkan isi container (vector, string) secara rapi",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "build student.cpp"
+        }
+    ]
+}

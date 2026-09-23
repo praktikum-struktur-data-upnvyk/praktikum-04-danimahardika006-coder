@@ -1,0 +1,25 @@
+{
+    // Tugas build untuk praktikum. Dipakai otomatis oleh tombol Run/Debug.
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build student.cpp",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-std=c++17",
+                "-g",
+                "-Wall",
+                "-Wextra",
+                "-Wno-unused-parameter",
+                "${workspaceFolder}/src/student.cpp",
+                "-o",
+                "${workspaceFolder}/latihan"
+            ],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$gcc"],
+            "group": { "kind": "build", "isDefault": true },
+            "presentation": { "reveal": "silent", "clear": true }
+        }
+    ]
+}

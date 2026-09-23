@@ -1,0 +1,35 @@
+# Compiled output
+*.o
+*.out
+*.exe
+student_program
+checker
+checker_bin
+latihan
+
+# Build artifacts
+build/
+bin/
+
+# macOS
+.DS_Store
+
+# Editor
+# Konfigurasi Run/Debug sengaja IKUT dibagikan supaya tombol Run di VS Code
+# langsung berfungsi tanpa praktikan menyetel apa pun. Setelan pribadi lain
+# di dalam .vscode/ tetap diabaikan.
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary test output
+test_output.txt
+
+# Hasil penilaian (dibuat ulang setiap kali checker dijalankan)
+result.json
+compile_student.log
+compile_checker.log

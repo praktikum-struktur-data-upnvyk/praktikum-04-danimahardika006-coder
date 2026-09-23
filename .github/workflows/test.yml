@@ -1,0 +1,169 @@
+name: "Praktikum C++ — Auto Grade"
+
+# Setiap push ke repository mahasiswa dihitung sebagai satu percobaan
+# pengumpulan. Tidak ada tombol "submit" terpisah.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+# Workflow ini tidak memerlukan hak tulis apa pun dan TIDAK memakai secret.
+# Hasil penilaian diambil oleh aplikasi web lewat GitHub App, bukan dikirim
+# dari sini, sehingga tidak ada kredensial yang tersimpan di repo mahasiswa.
+permissions:
+  contents: read
+
+jobs:
+  grade:
+    name: "Compile & Grade"
+    runs-on: ubuntu-latest
+
+    # Jaring pengaman terakhir terhadap job yang menggantung.
+    #
+    # Perhitungannya: checker membatasi tiap test suite 10 detik (lihat
+    # BATAS_DETIK_PER_SUITE di tests/checker.cpp), jadi walau KESEMBILAN suite
+    # menggantung sekaligus, checker paling lama 90 detik. Ditambah checkout,
+    # compile, dan upload artifact, job terburuk masih di bawah 3 menit;
+    # job yang sehat selesai sekitar 30-40 detik.
+    #
+    # Tanpa baris ini, job yang macet memakai batas BAWAAN GitHub: 6 JAM.
+    # GitHub menagih per menit dan membulatkan ke atas, jadi satu job macet
+    # setara 360 menit -- hampir seperlima jatah bulanan, dari satu mahasiswa
+    # saja. Angka 5 dipilih supaya job macet hanya berbiaya 5 menit.
+    timeout-minutes: 5
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout kode mahasiswa
+      # -----------------------------------------------------------------------
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Verifikasi compiler"
+        run: |
+          g++ --version
+          echo "Compiler siap."
+
+      # -----------------------------------------------------------------------
+      # 2. Tolak pembacaan masukan di dalam fungsi yang dinilai.
+      #    Dijalankan SEBELUM compile karena kasus ini tidak menimbulkan error
+      #    compile sama sekali -- ia lolos diam-diam lalu menghasilkan nilai
+      #    yang berubah-ubah antar-push. Lihat scripts/periksa_masukan.py.
+      # -----------------------------------------------------------------------
+      - name: "Periksa penggunaan cin"
+        run: |
+          echo "=== Memeriksa pembacaan masukan di luar main() ==="
+          if ! python3 scripts/periksa_masukan.py; then
+            ./scripts/write_error_result.sh "INPUT_DI_FUNGSI" \
+              "Ada cin/scanf di dalam fungsi yang dinilai. Fungsi menerima datanya lewat parameter, bukan lewat masukan keyboard."
+            exit 1
+          fi
+          echo "=== Aman ==="
+
+      # -----------------------------------------------------------------------
+      # 3. Compile student.cpp
+      #    Gagal compile => tulis result.json (score 0, status ERROR) lalu
+      #    hentikan job. Artifact tetap diunggah oleh step berikutnya.
+      # -----------------------------------------------------------------------
+      - name: "Compile student.cpp"
+        run: |
+          echo "=== Mengompilasi kode mahasiswa ==="
+          rm -f student.o
+
+          # -fmax-errors membendung banjir error susulan: satu kurung yang
+          # kurang bisa memicu ratusan error turunan yang mendorong error
+          # PERTAMA -- satu-satunya yang benar-benar berguna -- keluar dari
+          # batas ukuran log.
+          # -Wno-unused-parameter: setiap fungsi yang belum diisi memicu satu
+          # peringatan ini, sehingga skeleton kosong menghasilkan 18 baris
+          # peringatan yang -- seperti tertulis di src/student.cpp sendiri --
+          # memang wajar dan boleh diabaikan. Membiarkannya hanya menenggelamkan
+          # error yang sesungguhnya. Peringatan lain tetap menyala, termasuk
+          # -Wunused-variable yang justru menandakan pekerjaan setengah jadi.
+          g++ -std=c++17 -Wall -Wextra -Wno-unused-parameter -fmax-errors=15 \
+              -DADA_MAIN_LAIN -c src/student.cpp -o student.o 2>&1 | tee compile_student.log
+
+          # Tandai setiap error tepat pada barisnya di tab "Files changed",
+          # lengkap dengan terjemahan berbahasa Indonesia untuk kesalahan yang
+          # umum. Dijalankan baik saat compile GAGAL maupun BERHASIL: "lupa
+          # return" hanya berstatus peringatan, sehingga compile tetap lolos
+          # padahal program pasti mati saat dijalankan.
+          python3 scripts/anotasi_gcc.py compile_student.log
+
+          # tee menelan exit code g++, jadi keberhasilan compile diperiksa dari
+          # ada tidaknya object file, bukan dari exit code pipeline.
+          if [ ! -f student.o ]; then
+            ./scripts/write_error_result.sh "COMPILE_ERROR" "Kode mahasiswa gagal dikompilasi." compile_student.log
+            exit 1
+          fi
+          echo "=== Compile sukses ==="
+
+      # -----------------------------------------------------------------------
+      # 4. Compile checker (milik instruktur) dan link dengan student.o
+      # -----------------------------------------------------------------------
+      - name: "Compile checker"
+        run: |
+          echo "=== Mengompilasi checker ==="
+          rm -f checker_bin
+          g++ -std=c++17 -Wall -Wextra -fmax-errors=15 \
+              tests/checker.cpp student.o -o checker_bin 2>&1 | tee compile_checker.log
+
+          # Step ini gagal biasanya karena mahasiswa mengubah src/student.h,
+          # mengubah signature fungsi, atau memindahkan main() ke luar blok
+          # #ifndef ADA_MAIN_LAIN sehingga bentrok dengan main() milik checker.
+          # Anotasi menunjukkan baris penyebabnya, bukan sekadar "checker
+          # gagal dikompilasi".
+          python3 scripts/anotasi_gcc.py compile_checker.log
+
+          if [ ! -f checker_bin ]; then
+            ./scripts/write_error_result.sh "CHECKER_ERROR" "Checker gagal dikompilasi terhadap kode mahasiswa." compile_checker.log
+            exit 1
+          fi
+          echo "=== Checker siap ==="
+
+      # -----------------------------------------------------------------------
+      # 5. Jalankan test.
+      #    Checker sendiri yang menulis result.json (lihat tests/report.h).
+      # -----------------------------------------------------------------------
+      - name: "Jalankan test & hitung score"
+        id: run_tests
+        run: |
+          echo "=== Menjalankan automated test ==="
+          set +e
+          ./checker_bin
+          CHECKER_EXIT=$?
+          set -e
+
+          # Checker menjalankan tiap test suite di proses terpisah, sehingga
+          # crash pada kode mahasiswa TIDAK lagi membunuh checker: result.json
+          # tetap ditulis beserta nilai dari soal-soal yang sudah benar.
+          # Cabang di bawah hanya tersisa untuk kasus checker-nya sendiri yang
+          # dibunuh dari luar, misalnya kehabisan memori.
+          if [ ! -f result.json ]; then
+            ./scripts/write_error_result.sh "RUNTIME_ERROR" "Checker berhenti tidak wajar (exit ${CHECKER_EXIT})." ""
+          fi
+
+          exit "$CHECKER_EXIT"
+
+      # -----------------------------------------------------------------------
+      # 6. Job Summary yang mudah dibaca — dibuat DARI result.json,
+      #    bukan dari hasil parsing teks terminal.
+      # -----------------------------------------------------------------------
+      - name: "Tulis Job Summary"
+        if: always()
+        run: python3 scripts/job_summary.py result.json >> "$GITHUB_STEP_SUMMARY"
+
+      # -----------------------------------------------------------------------
+      # 7. Unggah hasil yang dapat dibaca mesin.
+      #    Aplikasi web mengunduh artifact bernama "grading-result".
+      # -----------------------------------------------------------------------
+      - name: "Unggah hasil penilaian"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grading-result
+          path: result.json
+          if-no-files-found: warn
+          retention-days: 90
